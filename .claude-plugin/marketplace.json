@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "edge-robotics-skills",
-      "source": ".",
+      "source": "./",
       "description": "Claude Code skills for edge computing and robotics development",
       "version": "0.1.0",
       "author": {
@@ -15,7 +15,10 @@
       },
       "homepage": "https://github.com/daikw/claude-code-plugins",
       "repository": "https://github.com/daikw/claude-code-plugins",
-      "license": "MIT"
+      "license": "MIT",
+      "skills": [
+        "skills/jujutsu"
+      ]
     }
   ]
 }
