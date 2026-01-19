@@ -2,7 +2,9 @@
   "name": "edge-robotics-skills",
   "version": "0.1.0",
   "description": "Claude Code skills for edge computing and robotics development",
-  "author": "daikw",
+  "author": {
+    "name": "daikw"
+  },
   "repository": "https://github.com/daikw/claude-code-plugins",
   "license": "MIT",
   "keywords": [
