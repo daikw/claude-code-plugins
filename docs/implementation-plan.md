@@ -232,49 +232,28 @@ model: haiku
 
 ### 2. sensor-scanner
 
-**役割**: I2C/SPI/USB センサーを自動検出・識別
+**役割**: I2C/SPI/USB/GPIO/カメラ/マイク/基板上センサーを自動検出・識別
 
 ```yaml
 ---
 name: sensor-scanner
-description: Auto-detect and identify connected sensors. Scans I2C, SPI, USB and reports device info.
+description: Auto-detect and identify connected sensors, cameras, microphones. Scans I2C, SPI, USB, GPIO, V4L2, ALSA.
 tools: Bash, Read, WebSearch
-model: haiku
----
-```
-
-**使用場面**:
-- 新しいセンサーを接続した時
-- 接続トラブルシューティング
-- プロジェクト開始時のハードウェア確認
-
-**出力**: 検出されたセンサーのリスト（アドレス、名称、推奨ライブラリ）
-
----
-
-### 3. robot-calibrator
-
-**役割**: LeRobot/SO-ARM のキャリブレーションをガイド
-
-```yaml
----
-name: robot-calibrator
-description: Guide through LeRobot/SO-ARM calibration process. Diagnoses issues and suggests fixes.
-tools: Bash, Read, Write
 model: sonnet
 ---
 ```
 
 **使用場面**:
-- 新しいロボットアームのセットアップ
-- キャリブレーションがずれた時
-- サーボ交換後の再キャリブレーション
+- 新しいセンサーを接続した時
+- カメラやマイクが認識されない時
+- 接続トラブルシューティング
+- プロジェクト開始時のハードウェア確認
 
-**出力**: キャリブレーション結果（オフセット値、診断レポート）
+**出力**: 検出されたデバイスのリスト（I2C、USB、カメラ、マイク、GPIO状態、基板上センサー）
 
 ---
 
-### 4. model-optimizer
+### 3. model-optimizer
 
 **役割**: ML モデルをエッジデバイス向けに最適化
 

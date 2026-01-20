@@ -6,12 +6,12 @@
   },
   "metadata": {
     "description": "Claude Code skills for edge computing and robotics development",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
       "name": "edge-robotics-skills",
-      "description": "Skills for edge computing, robotics, and VCS workflows including Jetson, Raspberry Pi, and LeRobot",
+      "description": "Skills for edge computing, robotics, and VCS workflows including Jetson, Raspberry Pi, LeRobot, and SO-ARM",
       "source": "./",
       "strict": false,
       "skills": [
@@ -20,7 +20,8 @@
         "./skills/jetson",
         "./skills/raspberry-pi",
         "./skills/lerobot-basics",
-        "./skills/lerobot-fullstack"
+        "./skills/lerobot-fullstack",
+        "./skills/so-arm"
       ]
     }
   ]
