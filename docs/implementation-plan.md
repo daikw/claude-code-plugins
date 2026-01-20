@@ -203,9 +203,115 @@ lerobot-basics（独立）
 
 ---
 
+## エージェント設計
+
+スキルは「知識・ワークフロー」を提供し、エージェントは「自律的なタスク実行」を担当する。
+以下のエージェントは、エッジデバイスでの作業を自動化・支援する。
+
+### 1. device-health-checker
+
+**役割**: Jetson/Raspberry Pi のシステム健全性を診断
+
+```yaml
+---
+name: device-health-checker
+description: Diagnose Jetson/RPi system health. Checks CPU/GPU temp, memory, disk, and running services.
+tools: Bash, Read, Grep
+model: haiku
+---
+```
+
+**使用場面**:
+- デバイスが遅い・不安定な時
+- デプロイ前の動作確認
+- 定期的なヘルスチェック
+
+**出力**: システム健全性レポート（温度、メモリ、ストレージ、サービス状態）
+
+---
+
+### 2. sensor-scanner
+
+**役割**: I2C/SPI/USB センサーを自動検出・識別
+
+```yaml
+---
+name: sensor-scanner
+description: Auto-detect and identify connected sensors. Scans I2C, SPI, USB and reports device info.
+tools: Bash, Read, WebSearch
+model: haiku
+---
+```
+
+**使用場面**:
+- 新しいセンサーを接続した時
+- 接続トラブルシューティング
+- プロジェクト開始時のハードウェア確認
+
+**出力**: 検出されたセンサーのリスト（アドレス、名称、推奨ライブラリ）
+
+---
+
+### 3. robot-calibrator
+
+**役割**: LeRobot/SO-ARM のキャリブレーションをガイド
+
+```yaml
+---
+name: robot-calibrator
+description: Guide through LeRobot/SO-ARM calibration process. Diagnoses issues and suggests fixes.
+tools: Bash, Read, Write
+model: sonnet
+---
+```
+
+**使用場面**:
+- 新しいロボットアームのセットアップ
+- キャリブレーションがずれた時
+- サーボ交換後の再キャリブレーション
+
+**出力**: キャリブレーション結果（オフセット値、診断レポート）
+
+---
+
+### 4. model-optimizer
+
+**役割**: ML モデルをエッジデバイス向けに最適化
+
+```yaml
+---
+name: model-optimizer
+description: Optimize ML models for edge deployment using TensorRT, ONNX, quantization.
+tools: Bash, Read, Write, Grep, WebSearch
+model: sonnet
+---
+```
+
+**使用場面**:
+- 推論速度を向上させたい時
+- モデルサイズを削減したい時
+- Jetson/RPi へのデプロイ準備
+
+**出力**: 最適化レポート（変換手順、ベンチマーク結果、推奨設定）
+
+---
+
+## エージェントとスキルの使い分け
+
+| 状況 | 使うもの | 理由 |
+|------|---------|------|
+| GPIO の使い方を知りたい | スキル (raspberry-pi) | 知識参照 |
+| 接続センサーを確認したい | エージェント (sensor-scanner) | 実行が必要 |
+| LeRobot のトレーニング方法 | スキル (lerobot-basics) | 知識参照 |
+| キャリブレーションを実行したい | エージェント (robot-calibrator) | 実行が必要 |
+| tegrastats の読み方 | スキル (jetson) | 知識参照 |
+| システム状態を診断したい | エージェント (device-health-checker) | 実行が必要 |
+
+---
+
 ## TODO
 
+- [x] 各スキルの SKILL.md をフロントマッター形式で作成
+- [x] jetson-containers の詳細Tipsを調査・追記
+- [x] SO-ARM100 の具体的なセットアップ手順を追記
 - [ ] transformers への微修正内容を追記（ユーザーからの情報待ち）
-- [ ] jetson-containers の詳細Tipsを調査・追記
-- [ ] SO-ARM100 の具体的なセットアップ手順を追記
-- [ ] 各スキルの SKILL.md をフロントマッター形式で作成

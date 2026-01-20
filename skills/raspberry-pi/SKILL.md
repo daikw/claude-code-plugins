@@ -24,10 +24,19 @@ Raspberry Pi での開発・運用をサポート。GPIO制御、カメラ、周
 
 | モデル | CPU | RAM | GPIO | 特徴 |
 |--------|-----|-----|------|------|
+| Pi 5 | 4x Cortex-A76 2.4GHz | 1-16GB | 40pin | RP1チップ, PCIe 2.0, USB3 5Gbps x2 |
 | Pi 4 Model B | 4x Cortex-A72 1.5GHz | 1-8GB | 40pin | USB3, Gigabit Ethernet |
-| Pi 5 | 4x Cortex-A76 2.4GHz | 4-8GB | 40pin | PCIe, 高性能 |
 | Pi Zero 2 W | 4x Cortex-A53 1GHz | 512MB | 40pin | 小型、WiFi内蔵 |
 | Pi 400 | 4x Cortex-A72 1.8GHz | 4GB | 40pin | キーボード一体型 |
+
+### Pi 5 の新機能
+
+- **RP1 サウスブリッジ**: Raspberry Pi 自社設計チップ。GPIO、USB、Ethernetなど I/O を担当
+- **PCIe 2.0 x1**: NVMe SSD など高速ストレージ接続可能
+- **デュアル 4Kp60 ディスプレイ**: VideoCore VII GPU による高性能グラフィック
+- **電源ボタン**: 本体に電源ボタンを内蔵
+- **リアルタイムクロック**: バッテリーバックアップ可能な RTC 内蔵
+- **推奨電源**: 5V 5A（27W）USB-C 電源アダプター
 
 ## GPIO Pinout
 
@@ -68,37 +77,17 @@ Raspberry Pi での開発・運用をサポート。GPIO制御、カメラ、周
 
 ## GPIO Control
 
-### Python (RPi.GPIO)
+### 重要: Pi 5 の GPIO アーキテクチャ変更
 
-```python
-import RPi.GPIO as GPIO
-import time
+Pi 5 では RP1 チップが GPIO を管理するため、従来のライブラリとの互換性に注意が必要。
 
-# セットアップ
-GPIO.setmode(GPIO.BCM)  # BCM番号を使用
-GPIO.setwarnings(False)
-
-# 出力
-GPIO.setup(17, GPIO.OUT)
-GPIO.output(17, GPIO.HIGH)
-time.sleep(1)
-GPIO.output(17, GPIO.LOW)
-
-# 入力
-GPIO.setup(18, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-if GPIO.input(18) == GPIO.LOW:
-    print("Button pressed")
-
-# PWM
-GPIO.setup(12, GPIO.OUT)
-pwm = GPIO.PWM(12, 1000)  # 1kHz
-pwm.start(50)  # 50% duty cycle
-pwm.ChangeDutyCycle(75)
-pwm.stop()
-
-# クリーンアップ
-GPIO.cleanup()
-```
+| ライブラリ | Pi 4以前 | Pi 5 | 備考 |
+|-----------|---------|------|------|
+| gpiozero | ✅ | ✅ | **推奨**。lgpio バックエンド使用 |
+| lgpio | ✅ | ✅ | gpiozero のデフォルトバックエンド |
+| gpiod/libgpiod | ✅ | ✅ | 低レベル制御向け |
+| RPi.GPIO | ✅ | ❌ | Pi 5 非対応 |
+| pigpio | ✅ | ❌ | Pi 5 非対応 |
 
 ### Python (gpiozero) - 推奨
 
@@ -123,82 +112,236 @@ pwm = PWMOutputDevice(12)
 pwm.value = 0.5  # 50%
 ```
 
+### Python (gpiozero + lgpio) - Pi 5 明示的設定
+
+```python
+from gpiozero import Device, LED, Button
+from gpiozero.pins.lgpio import LGPIOFactory
+
+# Pi 5 では明示的に lgpio バックエンドを設定（推奨）
+Device.pin_factory = LGPIOFactory(chip=4)  # Pi 5 は gpiochip4
+
+led = LED(17)
+led.on()
+```
+
+### Python (gpiod) - 低レベル制御
+
+```python
+import gpiod
+import time
+
+# Pi 5: gpiochip4, Pi 4以前: gpiochip0
+# 2024年7月以降のカーネルでは Pi 5 も gpiochip0 に統一される予定
+CHIP = 'gpiochip4'  # Pi 5
+LINE = 17
+
+chip = gpiod.Chip(CHIP)
+line = chip.get_line(LINE)
+
+# 出力設定
+line.request(consumer="example", type=gpiod.LINE_REQ_DIR_OUT)
+line.set_value(1)
+time.sleep(1)
+line.set_value(0)
+line.release()
+```
+
+### Python (rpi-lgpio) - RPi.GPIO 互換レイヤー
+
+```python
+# RPi.GPIO のコードを Pi 5 で動かす場合
+# pip install rpi-lgpio
+import RPi.GPIO as GPIO  # 実際は rpi-lgpio が呼ばれる
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(17, GPIO.OUT)
+GPIO.output(17, GPIO.HIGH)
+GPIO.cleanup()
+```
+
 ### コマンドライン (pinctrl)
 
 ```bash
-# Pi 5 以降
+# pinctrl: Pi 5 以降の推奨ツール（raspi-gpio の後継）
+# 全ピン状態確認
+pinctrl
+
+# 特定ピン確認
 pinctrl get 17
+
+# 出力設定
 pinctrl set 17 op dh  # output, drive high
 pinctrl set 17 op dl  # output, drive low
 
-# 旧来の方法 (raspi-gpio)
+# 入力設定（プルアップ付き）
+pinctrl set 17 ip pu
+
+# Pi 4 以前: raspi-gpio（レガシー）
 raspi-gpio get 17
 raspi-gpio set 17 op dh
 ```
 
-## Camera Module
-
-### カメラ有効化
+### gpiochip の確認
 
 ```bash
-# raspi-config で有効化
-sudo raspi-config
-# Interface Options → Camera → Enable
+# 利用可能な gpiochip 一覧
+ls /dev/gpiochip*
 
-# または /boot/config.txt に追加
-# Pi 4以前: start_x=1, gpu_mem=128
-# Pi 5: camera_auto_detect=1
+# GPIO 状態詳細（要 root）
+cat /sys/kernel/debug/gpio
+
+# Pi 5 の gpiochip4 ベース番号確認
+# 例: base=571 の場合、GPIO13 = 571 + 13 = 584
 ```
 
-### libcamera (推奨、Pi 5対応)
+## Camera Module
+
+### カメラモジュール比較
+
+| モジュール | センサ | 解像度 | 特徴 |
+|-----------|--------|--------|------|
+| Camera Module v2 | Sony IMX219 | 8MP | 標準、固定フォーカス |
+| Camera Module v3 | Sony IMX708 | 12MP | オートフォーカス対応 |
+| Camera Module v3 Wide | Sony IMX708 | 12MP | 広角120°、AF対応 |
+| Camera Module v3 NoIR | Sony IMX708 | 12MP | 赤外線対応、AF対応 |
+| HQ Camera | Sony IMX477 | 12.3MP | 交換レンズ(C/CS)対応 |
+| Global Shutter Camera | Sony IMX296 | 1.6MP | グローバルシャッター、60fps、高速撮影向け |
+
+### Pi 5 カメラ接続の注意
+
+Pi 5 では MIPI コネクタが変更されている。Camera Module v3 等を使う場合は対応ケーブルが必要。
+
+```bash
+# カメラ検出
+libcamera-hello --list-cameras
+
+# Pi 5 のカメラポート: CAM0, CAM1（両方使用可能）
+```
+
+### libcamera コマンドライン
 
 ```bash
 # 静止画撮影
 libcamera-still -o image.jpg
 
-# 解像度指定
-libcamera-still -o image.jpg --width 1920 --height 1080
+# 解像度・品質指定
+libcamera-still -o image.jpg --width 4608 --height 2592 -q 95
 
-# 動画撮影
+# HDR 撮影（対応カメラのみ）
+libcamera-still -o hdr.jpg --hdr
+
+# 動画撮影（H.264）
 libcamera-vid -o video.h264 -t 10000  # 10秒
 
-# プレビュー
-libcamera-hello
+# 動画撮影（MP4、音声付き）
+libcamera-vid -o video.mp4 -t 10000 --codec libav
 
-# 利用可能なカメラ一覧
+# タイムラプス
+libcamera-still -o frame%04d.jpg -t 60000 --timelapse 1000
+
+# プレビュー表示
+libcamera-hello -t 0  # 無期限
+
+# カメラ情報表示
 libcamera-hello --list-cameras
 ```
 
 ### Python (Picamera2)
 
 ```python
-from picamera2 import Picamera2
+from picamera2 import Picamera2, Preview
 import time
 
-# 初期化
 picam2 = Picamera2()
 
-# 静止画設定
+# === 静止画撮影 ===
 config = picam2.create_still_configuration(
-    main={"size": (1920, 1080)}
+    main={"size": (4608, 2592)},  # 最大解像度
+    buffer_count=2
 )
 picam2.configure(config)
-
-# 撮影
 picam2.start()
 time.sleep(2)  # ウォームアップ
 picam2.capture_file("image.jpg")
 picam2.stop()
+
+# === プレビュー付き撮影 ===
+picam2.start_preview(Preview.QTGL)  # GUI プレビュー
+picam2.start()
+time.sleep(3)
+picam2.capture_file("preview_shot.jpg")
+picam2.stop_preview()
+picam2.stop()
 ```
 
-### カメラモジュール比較
+### Picamera2 オートフォーカス制御（Camera Module v3）
 
-| モジュール | センサ | 解像度 | 特徴 |
-|-----------|--------|--------|------|
-| Camera Module v2 | Sony IMX219 | 8MP | 標準 |
-| Camera Module v3 | Sony IMX708 | 12MP | AF対応 |
-| Camera Module v3 Wide | Sony IMX708 | 12MP | 広角120° |
-| HQ Camera | Sony IMX477 | 12.3MP | 交換レンズ対応 |
+```python
+from picamera2 import Picamera2
+from libcamera import controls
+import time
+
+picam2 = Picamera2()
+picam2.configure(picam2.create_preview_configuration())
+picam2.start()
+
+# マニュアルフォーカス
+picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 0.5})
+
+# シングルオートフォーカス（一度だけ合焦）
+picam2.set_controls({"AfMode": controls.AfModeEnum.Auto, "AfTrigger": controls.AfTriggerEnum.Start})
+
+# コンティニュアスオートフォーカス（常時）
+picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})
+
+time.sleep(2)
+picam2.capture_file("focused.jpg")
+picam2.stop()
+```
+
+### Picamera2 動画撮影
+
+```python
+from picamera2 import Picamera2
+from picamera2.encoders import H264Encoder
+from picamera2.outputs import FfmpegOutput
+
+picam2 = Picamera2()
+video_config = picam2.create_video_configuration(
+    main={"size": (1920, 1080)},
+    controls={"FrameRate": 30}
+)
+picam2.configure(video_config)
+
+encoder = H264Encoder(bitrate=10000000)
+output = FfmpegOutput("video.mp4")
+
+picam2.start_recording(encoder, output)
+time.sleep(10)
+picam2.stop_recording()
+```
+
+### Picamera2 + OpenCV
+
+```python
+from picamera2 import Picamera2
+import cv2
+
+picam2 = Picamera2()
+picam2.configure(picam2.create_preview_configuration(main={"format": "RGB888"}))
+picam2.start()
+
+while True:
+    frame = picam2.capture_array()
+    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    cv2.imshow("Camera", gray)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cv2.destroyAllWindows()
+picam2.stop()
+```
 
 ## HAT/pHAT
 
@@ -221,11 +364,21 @@ i2cdetect -y 1
 |-----|------|----------------|
 | Sense HAT | 環境センシング | I2C |
 | PoE+ HAT | Power over Ethernet | - |
+| AI Kit (Hailo-8L) | AI アクセラレータ | PCIe (Pi 5) |
+| NVMe Base | NVMe SSD 接続 | PCIe (Pi 5) |
 | Motor HAT | モーター制御 | I2C |
 | ADC HAT | アナログ入力 | SPI/I2C |
 | RTC HAT | リアルタイムクロック | I2C |
 
 ## OS Configuration
+
+### Raspberry Pi OS バージョン
+
+| バージョン | ベース | サポート期限 | 備考 |
+|-----------|--------|------------|------|
+| Trixie | Debian 13 | 2027年頃 | 最新、Pi 5 推奨 |
+| Bookworm | Debian 12 | 2026年12月 | 安定版 |
+| Bullseye | Debian 11 | レガシー | Pi 5 非対応 |
 
 ### raspi-config
 
@@ -234,33 +387,38 @@ sudo raspi-config
 
 # よく使う設定
 # 1. System Options → Password
-# 2. Interface Options → SSH, I2C, SPI, Camera
+# 2. Interface Options → SSH, I2C, SPI, VNC
 # 3. Performance Options → GPU Memory
 # 4. Localisation Options → Timezone, Locale
 ```
 
-### /boot/config.txt (Pi 4以前) / /boot/firmware/config.txt (Pi 5)
+### /boot/firmware/config.txt（Pi 5 / Bookworm以降）
 
 ```ini
-# GPUメモリ割り当て
+# カメラ自動検出
+camera_auto_detect=1
+
+# GPUメモリ割り当て（デスクトップ使用時）
 gpu_mem=256
 
-# オーバークロック
-#arm_freq=2000  # Pi 4
-#over_voltage=6
-
-# I2C高速化
+# I2C有効化・高速化
 dtparam=i2c_arm=on
 dtparam=i2c_arm_baudrate=400000
 
 # SPI有効化
 dtparam=spi=on
 
-# 1-Wire有効化
+# 1-Wire有効化（GPIO4）
 dtoverlay=w1-gpio
 
-# PWMオーディオ無効化（GPIO12,13使用時）
-dtparam=audio=off
+# UART有効化
+enable_uart=1
+
+# Pi 5: ファン制御
+# cooling_fan=1
+
+# Pi 5: PCIe Gen 3 有効化（オプション、発熱注意）
+# dtparam=pciex1_gen=3
 ```
 
 ### systemd サービス
@@ -280,13 +438,15 @@ ExecStart=/usr/bin/python3 /home/pi/app.py
 WorkingDirectory=/home/pi
 User=pi
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 ```
 
 ```bash
-# 有効化
+# 有効化・起動
+sudo systemctl daemon-reload
 sudo systemctl enable myapp
 sudo systemctl start myapp
 sudo systemctl status myapp
@@ -294,7 +454,29 @@ sudo systemctl status myapp
 
 ## Networking
 
-### 静的IP設定
+### NetworkManager（Bookworm以降推奨）
+
+```bash
+# 接続一覧
+nmcli connection show
+
+# WiFi 接続
+nmcli device wifi list
+nmcli device wifi connect "SSID" password "password"
+
+# 静的IP設定
+nmcli connection modify "Wired connection 1" \
+    ipv4.method manual \
+    ipv4.addresses 192.168.1.100/24 \
+    ipv4.gateway 192.168.1.1 \
+    ipv4.dns "8.8.8.8,8.8.4.4"
+nmcli connection up "Wired connection 1"
+
+# WiFi AP モード（ホットスポット）
+nmcli device wifi hotspot ssid "MyPiAP" password "password123"
+```
+
+### dhcpcd（レガシー、Bullseye以前）
 
 ```bash
 # /etc/dhcpcd.conf に追加
@@ -304,42 +486,23 @@ static routers=192.168.1.1
 static domain_name_servers=192.168.1.1 8.8.8.8
 ```
 
-### WiFi設定
-
-```bash
-# raspi-config で設定
-sudo raspi-config
-# System Options → Wireless LAN
-
-# または手動
-sudo nano /etc/wpa_supplicant/wpa_supplicant.conf
-```
-
-```conf
-country=JP
-ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
-update_config=1
-
-network={
-    ssid="MyNetwork"
-    psk="password"
-}
-```
-
 ## Troubleshooting
 
-### GPIOが動作しない
+### GPIO が動作しない
 
 ```bash
+# Pi 5: gpiochip 確認
+ls -la /dev/gpiochip*
+
 # 権限確認
 groups  # gpio グループに所属しているか
 
-# グループ追加
+# グループ追加（再ログイン必要）
 sudo usermod -aG gpio $USER
-# 再ログイン必要
 
-# /dev/gpiomem 確認
-ls -la /dev/gpiomem
+# RPi.GPIO エラーが出る場合（Pi 5）
+# → gpiozero または rpi-lgpio を使用
+pip install rpi-lgpio  # RPi.GPIO 互換レイヤー
 ```
 
 ### I2Cデバイスが見つからない
@@ -348,9 +511,12 @@ ls -la /dev/gpiomem
 # I2C有効確認
 ls /dev/i2c*
 
-# 有効化
+# 有効化（raspi-config）
 sudo raspi-config
 # Interface Options → I2C → Enable
+
+# または config.txt に追加
+# dtparam=i2c_arm=on
 
 # スキャン
 i2cdetect -y 1
@@ -360,37 +526,59 @@ i2cdetect -y 1
 
 ```bash
 # ケーブル接続確認（コネクタの向き注意）
-
-# Pi 5の場合、正しいポート確認
-# CAM0 または CAM1
+# Pi 5: 22pin→15pin 変換ケーブルが必要な場合あり
 
 # カメラ検出
 libcamera-hello --list-cameras
 
+# 何も表示されない場合
+# 1. ケーブル接続を確認
+# 2. config.txt に camera_auto_detect=1 があるか確認
+# 3. 再起動
+
 # ログ確認
 dmesg | grep -i camera
+journalctl -u camera
 ```
 
 ### SDカード破損防止
 
 ```bash
-# Read-onlyマウント（開発完了後）
-# /etc/fstab に ro オプション追加
-
-# または overlayfs 使用
+# Read-only ファイルシステム（overlayfs）
 sudo raspi-config
-# Performance Options → Overlay File System
+# Performance Options → Overlay File System → Enable
+
+# または手動で /etc/fstab に ro オプション追加
+# 開発完了後の本番運用に推奨
+```
+
+### 温度・スロットリング確認
+
+```bash
+# CPU温度
+vcgencmd measure_temp
+
+# スロットリング状態
+vcgencmd get_throttled
+# 0x0 = 正常
+# 0x50000 = 過去にスロットリング発生
+
+# Pi 5: 適切な冷却が重要（アクティブクーラー推奨）
 ```
 
 ## Command Reference
 
 | コマンド | 説明 |
 |---------|------|
-| `pinctrl get` | GPIO状態確認 (Pi 5) |
+| `pinctrl` | GPIO状態確認・制御 (Pi 5) |
+| `pinctrl get 17` | GPIO17 の状態確認 |
+| `pinctrl set 17 op dh` | GPIO17 を出力HIGHに |
 | `raspi-gpio get` | GPIO状態確認 (Pi 4以前) |
 | `i2cdetect -y 1` | I2Cデバイススキャン |
 | `libcamera-hello` | カメラプレビュー |
 | `libcamera-still -o file.jpg` | 静止画撮影 |
+| `libcamera-vid -o file.h264` | 動画撮影 |
 | `vcgencmd measure_temp` | CPU温度 |
 | `vcgencmd get_throttled` | スロットリング状態 |
 | `raspi-config` | 設定ツール |
+| `nmcli` | ネットワーク管理 (Bookworm+) |

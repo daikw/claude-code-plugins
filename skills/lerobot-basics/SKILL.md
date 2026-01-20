@@ -18,24 +18,19 @@ HuggingFace LeRobot を使用したロボット操作モデルのトレーニン
 - カスタムデータセットを作成するとき
 - 事前学習モデルをファインチューニングするとき
 - 評価メトリクスを解釈するとき
+- VLAモデル（Pi0, SmolVLA等）を使用するとき
 
 ## Installation
 
 ### 基本インストール
 
 ```bash
-# リポジトリクローン
+# PyPIからインストール（推奨）
+pip install lerobot
+
+# または開発版（最新機能）
 git clone https://github.com/huggingface/lerobot.git
 cd lerobot
-
-# 仮想環境作成
-python -m venv .venv
-source .venv/bin/activate
-
-# インストール
-pip install -e .
-
-# 開発用（テスト含む）
 pip install -e ".[dev]"
 ```
 
@@ -57,37 +52,43 @@ python -c "import lerobot; print(lerobot.__version__)"
 python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
 ```
 
-## Dataset Structure
+## Dataset Structure (v3.0)
 
-### LeRobot データセット形式
+LeRobotDataset v3.0 (2025年9月リリース) は大規模データセット向けに最適化された新形式。
+
+### ディレクトリ構造
 
 ```
 dataset/
 ├── meta/
 │   ├── info.json           # データセットメタ情報
-│   ├── episodes.jsonl      # エピソード情報
+│   ├── episodes.jsonl      # エピソード情報（リレーショナル）
 │   └── stats.json          # 統計情報
 ├── data/
-│   ├── chunk-000/
-│   │   ├── episode_000000.parquet
-│   │   ├── episode_000001.parquet
-│   │   └── ...
+│   ├── train-00000-of-00001.parquet  # 複数エピソードを1ファイルに格納
 │   └── ...
-└── videos/                 # （オプション）動画ファイル
-    ├── chunk-000/
-    │   ├── observation.images.top/
-    │   │   ├── episode_000000.mp4
-    │   │   └── ...
+└── videos/
+    ├── observation.images.top/
+    │   ├── train-00000-of-00001.mp4  # 複数エピソードを1ファイルに格納
     │   └── ...
     └── ...
 ```
+
+### v3.0 の主な変更点
+
+| 項目 | v2.x | v3.0 |
+|------|------|------|
+| ファイル構成 | 1エピソード=1ファイル | 複数エピソード=1ファイル |
+| メタデータ | ファイル名ベース | リレーショナルメタデータ |
+| Hub連携 | ダウンロード必須 | StreamingLeRobotDataset対応 |
+| スケーラビリティ | 数千エピソードまで | 数百万エピソード対応 |
 
 ### info.json の構造
 
 ```json
 {
-  "codebase_version": "v2.0",
-  "robot_type": "so100",
+  "codebase_version": "v3.0",
+  "robot_type": "so101",
   "fps": 30,
   "features": {
     "observation.state": {
@@ -112,18 +113,47 @@ dataset/
 }
 ```
 
+### データセットの使用
+
+```python
+from lerobot.datasets import LeRobotDataset
+
+# Hubから読み込み（自動ダウンロード）
+dataset = LeRobotDataset("lerobot/aloha_static_coffee")
+
+# ストリーミングモード（ダウンロード不要）
+from lerobot.datasets.streaming_dataset import StreamingLeRobotDataset
+dataset = StreamingLeRobotDataset("lerobot/aloha_static_coffee")
+
+# delta_timestamps: 時間ウィンドウで複数フレーム取得
+dataset = LeRobotDataset(
+    "lerobot/aloha_static_coffee",
+    delta_timestamps={
+        "observation.image": [-1.0, -0.5, -0.2, 0],  # 過去3フレーム + 現在
+        "action": [0, 0.1, 0.2]  # 現在 + 未来2フレーム
+    }
+)
+```
+
 ## Data Collection
+
+### サポートされるハードウェア
+
+- **アーム**: SO100, SO101, Koch, OMX, OpenARM, Aloha
+- **モバイル**: LeKiwi, EarthRover, HopeJR
+- **ヒューマノイド**: Reachy2, Unitree G1
+- **入力デバイス**: ゲームパッド、キーボード、スマートフォン
 
 ### テレオペレーションでのデータ収集
 
 ```bash
-# SO-100 の場合
+# SO-101 の場合
 python lerobot/scripts/control_robot.py record \
-  --robot-path lerobot/configs/robot/so100.yaml \
+  --robot-path lerobot/configs/robot/so101.yaml \
   --fps 30 \
   --root data \
-  --repo-id ${HF_USER}/so100_test \
-  --tags so100 tutorial \
+  --repo-id ${HF_USER}/so101_test \
+  --tags so101 tutorial \
   --warmup-time-s 5 \
   --episode-time-s 60 \
   --reset-time-s 10 \
@@ -143,93 +173,171 @@ python lerobot/scripts/control_robot.py record \
 huggingface-cli login
 
 python lerobot/scripts/push_dataset_to_hub.py \
-  --raw-dir data/raw/so100_test \
-  --repo-id ${HF_USER}/so100_test \
+  --raw-dir data/raw/so101_test \
+  --repo-id ${HF_USER}/so101_test \
   --raw-format lerobot
 ```
 
+## Policies
+
+### 利用可能なポリシー（v0.4.0+）
+
+| カテゴリ | ポリシー | 説明 | パラメータ数 |
+|---------|---------|------|-------------|
+| **模倣学習** | ACT | Action Chunking with Transformers。高精度操作向け | ~80M |
+| | Diffusion | Diffusion Policy。複雑なタスク向け | ~100M |
+| | VQ-BeT | Vector-Quantized BeT。離散アクション向け | ~50M |
+| **強化学習** | HIL-SERL | Human-in-the-Loop Sample-Efficient RL | - |
+| | TDMPC | Temporal Difference MPC。オンライン適応 | - |
+| **VLAモデル** | Pi0Fast | π0 with FAST tokenizer。オートレグレッシブ | ~3B |
+| | Pi0.5 | 汎化性能特化。新環境への適応 | ~3B |
+| | SmolVLA | 軽量VLA。リソース効率重視 | ~450M |
+| | GR00T N1.5 | NVIDIAの汎用VLA | ~2B |
+| | XVLA | クロスエンボディメントVLA | ~1B |
+
+### ポリシーの選択基準
+
+| ユースケース | 推奨ポリシー |
+|-------------|-------------|
+| 単純な操作タスク、少ないデータ | ACT |
+| 複雑なタスク、高精度要求 | Diffusion |
+| リアルタイム推論、エッジデバイス | SmolVLA |
+| 新環境への汎化が必要 | Pi0.5 |
+| インタラクティブな学習 | HIL-SERL |
+
 ## Training
 
-### 設定ファイル（Hydra）
-
-```yaml
-# configs/policy/act.yaml
-policy:
-  name: act
-
-  # モデルアーキテクチャ
-  chunk_size: 100
-  n_action_steps: 100
-  input_shapes:
-    observation.images.top: [3, 480, 640]
-    observation.state: [6]
-  output_shapes:
-    action: [6]
-
-  # Vision Encoder
-  vision_backbone: resnet18
-  pretrained_backbone: true
-
-  # Transformer
-  dim_model: 512
-  n_heads: 8
-  n_encoder_layers: 4
-  n_decoder_layers: 1
-```
-
-### トレーニング実行
+### CLI コマンド（推奨）
 
 ```bash
 # ACTポリシーでトレーニング
-python lerobot/scripts/train.py \
-  policy=act \
-  env=so100 \
-  dataset_repo_id=${HF_USER}/so100_test \
-  training.num_epochs=100 \
-  training.batch_size=8 \
-  training.lr=1e-4 \
-  wandb.enable=true \
-  wandb.project=lerobot-so100
+lerobot-train \
+  --dataset.repo_id=${HF_USER}/so101_test \
+  --policy.type=act \
+  --output_dir=outputs/train/act_so101 \
+  --job_name=act_so101_test \
+  --policy.device=cuda \
+  --wandb.enable=true
+```
+
+### 環境指定でのトレーニング
+
+```bash
+# PushT環境でDiffusion Policyをトレーニング
+lerobot-train \
+  --output_dir=outputs/train/diffusion_pusht \
+  --policy.type=diffusion \
+  --dataset.repo_id=lerobot/pusht \
+  --env.type=pusht \
+  --batch_size=64 \
+  --steps=200000 \
+  --eval_freq=25000 \
+  --save_freq=25000
+```
+
+### マルチGPUトレーニング
+
+```bash
+# torchrun を使用
+torchrun --nproc_per_node=4 -m lerobot.scripts.train \
+  --dataset.repo_id=${HF_USER}/so101_test \
+  --policy.type=act \
+  --output_dir=outputs/train/act_multigpu
+```
+
+### 設定ファイル（JSON形式）
+
+```json
+{
+  "dataset": {
+    "repo_id": "user/dataset_name"
+  },
+  "policy": {
+    "type": "act",
+    "chunk_size": 100,
+    "n_action_steps": 100,
+    "dim_model": 512,
+    "n_heads": 8,
+    "n_encoder_layers": 4,
+    "n_decoder_layers": 1
+  },
+  "training": {
+    "batch_size": 8,
+    "lr": 1e-4,
+    "steps": 100000
+  }
+}
+```
+
+```bash
+# 設定ファイルを使用
+lerobot-train --config_path=config.json
 ```
 
 ### 主要なトレーニングパラメータ
 
 | パラメータ | 説明 | 推奨値 |
 |-----------|------|--------|
-| `training.num_epochs` | エポック数 | 100-500 |
-| `training.batch_size` | バッチサイズ | 8-32 (GPUメモリに依存) |
-| `training.lr` | 学習率 | 1e-4 - 1e-5 |
-| `policy.chunk_size` | 予測するアクション数 | 50-100 |
-| `training.grad_clip_norm` | 勾配クリッピング | 10.0 |
+| `--steps` | トレーニングステップ数 | 100000-500000 |
+| `--batch_size` | バッチサイズ | 8-64 (GPUメモリに依存) |
+| `--policy.lr` | 学習率 | 1e-4 - 1e-5 |
+| `--policy.chunk_size` | 予測するアクション数 | 50-100 |
+| `--grad_clip_norm` | 勾配クリッピング | 10.0 |
 
-### 利用可能なポリシー
+## VLA Model Training
 
-| ポリシー | 説明 | 用途 |
-|---------|------|------|
-| ACT | Action Chunking with Transformers | 高精度操作 |
-| Diffusion | Diffusion Policy | 複雑なタスク |
-| TDMPC | Temporal Difference MPC | オンライン適応 |
-| VQ-BeT | Vector-Quantized BeT | 離散アクション |
+### SmolVLA のファインチューニング
+
+```bash
+lerobot-train \
+  --dataset.repo_id=${HF_USER}/my_dataset \
+  --policy.type=smolvla \
+  --policy.pretrained_path=lerobot/smolvla_base \
+  --task="pick up the red cube" \
+  --output_dir=outputs/train/smolvla_custom \
+  --batch_size=4 \
+  --steps=50000
+```
+
+### Pi0 のファインチューニング
+
+```bash
+lerobot-train \
+  --dataset.repo_id=${HF_USER}/my_dataset \
+  --policy.type=pi0fast \
+  --policy.pretrained_path=physical-intelligence/pi0-fast \
+  --task="grasp the object and place it in the bin" \
+  --output_dir=outputs/train/pi0_custom \
+  --batch_size=2 \
+  --gradient_accumulation_steps=8
+```
 
 ## Fine-tuning
 
 ### 事前学習モデルからのファインチューニング
 
 ```bash
-python lerobot/scripts/train.py \
-  policy=act \
-  env=so100 \
-  dataset_repo_id=${HF_USER}/so100_newtask \
-  hydra.run.dir=outputs/finetune \
-  training.num_epochs=50 \
-  training.lr=1e-5 \
-  policy.pretrained_model_path=outputs/train/checkpoints/last.pt
+lerobot-train \
+  --dataset.repo_id=${HF_USER}/so101_newtask \
+  --policy.type=act \
+  --policy.pretrained_path=outputs/train/act_so101/checkpoints/last \
+  --output_dir=outputs/finetune/act_newtask \
+  --steps=50000 \
+  --policy.lr=1e-5
+```
+
+### トレーニングの再開
+
+```bash
+lerobot-train \
+  --config_path=outputs/train/act_so101/checkpoints/last/pretrained_model/train_config.json \
+  --resume=true
 ```
 
 ### ファインチューニングのコツ
 
 - **学習率**: 元の1/10程度（1e-5）
-- **エポック数**: 元の1/2程度
+- **ステップ数**: 元の1/2程度
 - **データ量**: 最低20エピソード
 - **Freeze**: 必要に応じてbackboneを固定
 
@@ -241,13 +349,16 @@ for param in model.vision_backbone.parameters():
 
 ## Evaluation
 
-### オフライン評価
+### シミュレーション環境での評価
+
+LeRobotはLIBERO、Meta-Worldなどの標準ベンチマークをサポート。
 
 ```bash
 python lerobot/scripts/eval.py \
   -p outputs/train/checkpoints/last.pt \
-  eval.n_episodes=50 \
-  eval.batch_size=10
+  --env.type=pusht \
+  --eval.n_episodes=50 \
+  --eval.batch_size=10
 ```
 
 ### 評価メトリクス
@@ -262,25 +373,33 @@ python lerobot/scripts/eval.py \
 
 ```bash
 python lerobot/scripts/control_robot.py record \
-  --robot-path lerobot/configs/robot/so100.yaml \
+  --robot-path lerobot/configs/robot/so101.yaml \
   --fps 30 \
   --root data \
-  --repo-id ${HF_USER}/so100_eval \
+  --repo-id ${HF_USER}/so101_eval \
   -p outputs/train/checkpoints/last.pt \
   --warmup-time-s 5 \
   --episode-time-s 60 \
   --num-episodes 20
 ```
 
-## Transformers Patches
+## HIL-SERL Workflow
 
-> **TODO**: transformers ライブラリへの微修正について、詳細を後日追記予定。
+Human-in-the-Loop Sample-Efficient Reinforcement Learning を使用したリアルタイム学習。
 
-LeRobot を特定の環境で使用する際、transformers ライブラリに対して微修正が必要な場合がある。
+```bash
+# 1. 初期デモンストレーション収集
+python lerobot/scripts/control_robot.py record \
+  --robot-path lerobot/configs/robot/so101.yaml \
+  --repo-id ${HF_USER}/hilserl_demo \
+  --num-episodes 10
 
-```python
-# 例: カスタムモデル登録
-# （詳細は後日追記）
+# 2. HIL-SERLでトレーニング（人間介入付き）
+lerobot-train \
+  --policy.type=hilserl \
+  --dataset.repo_id=${HF_USER}/hilserl_demo \
+  --output_dir=outputs/train/hilserl \
+  --online_training=true
 ```
 
 ## Troubleshooting
@@ -289,23 +408,29 @@ LeRobot を特定の環境で使用する際、transformers ライブラリに�
 
 ```bash
 # バッチサイズを小さく
-training.batch_size=4
+--batch_size=4
+
+# 勾配累積を使用
+--gradient_accumulation_steps=4
 
 # 画像サイズを小さく
-policy.input_shapes.observation.images.top=[3,240,320]
+--policy.input_shapes.observation.images.top=[3,240,320]
 
 # 勾配チェックポイント有効化
-training.grad_checkpointing=true
+--grad_checkpointing=true
 ```
 
 ### データセットのロードが遅い
 
 ```bash
+# ストリーミングモードを使用
+--dataset.streaming=true
+
 # ローカルキャッシュを使用
 export HF_DATASETS_CACHE=/path/to/fast/storage
 
 # num_workers を増やす
-training.num_workers=8
+--num_workers=8
 ```
 
 ### トレーニングが収束しない
@@ -325,7 +450,7 @@ training.num_workers=8
 
 | コマンド | 説明 |
 |---------|------|
-| `python lerobot/scripts/train.py` | トレーニング実行 |
+| `lerobot-train` | トレーニング実行（CLI） |
 | `python lerobot/scripts/eval.py` | 評価実行 |
 | `python lerobot/scripts/control_robot.py record` | データ収集 |
 | `python lerobot/scripts/push_dataset_to_hub.py` | HFへアップロード |
@@ -335,6 +460,10 @@ training.num_workers=8
 
 - [LeRobot GitHub](https://github.com/huggingface/lerobot)
 - [LeRobot Documentation](https://huggingface.co/docs/lerobot)
+- [Robot Learning Tutorial (HF Space)](https://huggingface.co/spaces/lerobot/robot-learning-tutorial)
+- [LeRobot v0.4.0 Release Blog](https://huggingface.co/blog/lerobot-release-v040)
+- [LeRobotDataset v3.0 Blog](https://huggingface.co/blog/lerobot-datasets-v3)
+- [SmolVLA Blog](https://huggingface.co/blog/smolvla)
 - [HuggingFace Datasets](https://huggingface.co/datasets?other=LeRobot)
 - [ACT Paper](https://arxiv.org/abs/2304.13705)
 - [Diffusion Policy Paper](https://arxiv.org/abs/2303.04137)
