@@ -5,13 +5,13 @@
     "email": "daiki.watanabe@example.com"
   },
   "metadata": {
-    "description": "Claude Code skills for edge computing and robotics development",
-    "version": "0.3.0"
+    "description": "Claude Code skills and rules for edge computing, robotics, and embedded development",
+    "version": "0.4.0"
   },
   "plugins": [
     {
       "name": "edge-robotics-skills",
-      "description": "Skills for edge computing, robotics, and VCS workflows including Jetson, Raspberry Pi, LeRobot, and SO-ARM",
+      "description": "Skills for edge computing, robotics, embedded MCUs, and VCS workflows",
       "source": "./",
       "strict": false,
       "skills": [
@@ -21,7 +21,15 @@
         "./skills/raspberry-pi",
         "./skills/lerobot-basics",
         "./skills/lerobot-fullstack",
-        "./skills/so-arm"
+        "./skills/so-arm",
+        "./skills/embedded-basics",
+        "./skills/esp32",
+        "./skills/pico",
+        "./skills/nrf",
+        "./skills/stm32",
+        "./skills/zephyr",
+        "./skills/freertos",
+        "./skills/arduino"
       ]
     }
   ]
