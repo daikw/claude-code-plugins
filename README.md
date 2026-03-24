@@ -1,67 +1,94 @@
 # Claude Code Plugins
 
-エッジコンピューティング・ロボティクス開発向けの Claude Code プラグイン集。
+Claude Code のスキル・エージェント・ルールのプラグインコレクション。
 
-## 概要
+## プラグイン一覧
 
-このリポジトリは、以下の領域に特化したスキルとエージェントを提供する：
+### general-skills
 
-| カテゴリ | スキル名 | 説明 |
-|----------|----------|------|
-| VCS | `jujutsu` | jj の基本操作、Git からの移行、ワークフロー |
-| エッジ共通 | `edge-common` | センサ・アクチュエータのカタログ、共通概念 |
-| Jetson | `jetson` | tegrastats、CUDA最適化、JetPack管理 |
-| Raspberry Pi | `raspberry-pi` | GPIO、周辺機器、OS設定 |
-| LeRobot | `lerobot-basics` | インストール、データセット作成、トレーニング |
-| LeRobot | `lerobot-fullstack` | ハードウェア構築、エッジデプロイ、統合 |
+汎用的な開発ワークフロー向けスキル・エージェント。
+
+| カテゴリ | スキル | 説明 |
+|----------|--------|------|
+| 開発 | `swarm-dev` | チーム編成による並列開発 |
+| 開発 | `swarm-dev-v2` | swarm-dev 軽量版 |
+| 開発 | `issue-dev` | GitHub/GitLab Issue → 実装パイプライン |
+| 開発 | `skill-creator` | スキル設計・作成ガイド |
+| CI/CD | `fix-ci` | GitHub Actions/GitLab CI 失敗修復 |
+| CI/CD | `commit-push` | VCS 自動検出（git/jj）コミット・プッシュ |
+| VCS | `jujutsu-workflow` | Jujutsu (jj) ワークフロー |
+| 品質 | `codex` | Codex CLI 連携（セカンドオピニオン） |
+| 品質 | `coding-agent-spec` | コーディングエージェント仕様比較 |
+| 品質 | `agent-skill-testing` | エージェントスクリプトのテスト設計 |
+| テキスト | `deodorize-ai` | AI臭の除去（日本語テキスト校正） |
+| ビジネス | `business-evaluation` | 事業評価（投資判断/DD/Go-NoGo） |
+| インフラ | `terraform-mermaid` | Terraform → Mermaid 構成図 |
+| インフラ | `xpoint-server-apply` | サーバ構築申請フォーム記入支援 |
+| ユーティリティ | `meta-rules` | Rules/Skills/Agents 設計原則 |
+| ユーティリティ | `move-project` | プロジェクト移動時の履歴追跡 |
+| ユーティリティ | `history-search` | 会話履歴の横断検索 |
+
+**Agents**: planner, architect, tdd-guide, code-reviewer, security-reviewer, refactoring-suggester, codex
+
+### edge-robotics-skills
+
+エッジコンピューティング・ロボティクス・組込開発向け。
+
+| カテゴリ | スキル | 説明 |
+|----------|--------|------|
+| 共通 | `edge-common` | センサ・アクチュエータカタログ、通信プロトコル |
+| 共通 | `embedded-basics` | 組込開発基礎 |
+| SBC | `jetson` | NVIDIA Jetson（tegrastats、CUDA、JetPack） |
+| SBC | `raspberry-pi` | Raspberry Pi（GPIO、周辺機器） |
+| MCU | `esp32` | ESP32/ESP-IDF |
+| MCU | `stm32` | STM32/HAL |
+| MCU | `nrf` | Nordic nRF/Zephyr |
+| MCU | `pico` | Raspberry Pi Pico |
+| RTOS | `zephyr` | Zephyr RTOS |
+| RTOS | `freertos` | FreeRTOS |
+| RTOS | `arduino` | Arduino フレームワーク |
+| ロボティクス | `lerobot-basics` | LeRobot トレーニング |
+| ロボティクス | `lerobot-fullstack` | LeRobot デプロイ |
+| ロボティクス | `so-arm` | SO-ARM100/101 |
+| VCS | `jujutsu` | jj VCS |
+
+**Agents**: device-health-checker, sensor-scanner, model-optimizer, firmware-flasher
 
 ## インストール
 
+### プラグイン（skills + agents）
+
 ```bash
-# ローカルパスからインストール
-/plugin install /path/to/claude-code-plugins
+# general スキルをインストール
+claude plugin install general-skills@daikw
 
-# GitHub からインストール（公開後）
-/plugin install github.com/daikw/claude-code-plugins
+# edge-robotics スキルをインストール
+claude plugin install edge-robotics-skills@daikw
 ```
 
-## ディレクトリ構成
+### ルール（install-rules.sh）
 
-```
-claude-code-plugins/
-├── .claude-plugin/
-│   └── plugin.json           # プラグイン設定
-├── skills/
-│   ├── jujutsu/              # jj VCS ワークフロー
-│   ├── edge-common/          # エッジデバイス共通
-│   ├── jetson/               # NVIDIA Jetson
-│   ├── raspberry-pi/         # Raspberry Pi
-│   ├── lerobot-basics/       # LeRobot 基本・トレーニング
-│   └── lerobot-fullstack/    # LeRobot フルスタック
-├── agents/                   # 自律エージェント（必要時のみ）
-└── README.md
-```
+ルールはプラグインシステムでは配布できないため、スクリプトでインストールする。
 
-## スキルの使い方
+```bash
+# リポジトリをクローン
+git clone https://github.com/daikw/claude-code-plugins.git
+cd claude-code-plugins
 
-プラグインをインストール後、スキル名を会話中で言及すると自動的に有効化される：
+# general ルールのみインストール
+./install-rules.sh general
 
-```
-# 例：jujutsu スキルを使う
-「jj で新しいブランチを作りたい」
+# edge-robotics ルールのみインストール
+./install-rules.sh edge-robotics
 
-# 例：Jetson スキルを使う
-「Jetson の GPU 使用率を確認したい」
+# 全ルールをインストール
+./install-rules.sh all
+
+# dry-run（何がインストールされるか確認）
+./install-rules.sh all --dry-run
 ```
 
-## 開発状況
-
-- [ ] jujutsu
-- [ ] edge-common
-- [ ] jetson
-- [ ] raspberry-pi
-- [ ] lerobot-basics
-- [ ] lerobot-fullstack
+ルールは `~/.claude/rules/` に `{plugin}--{rule}.md` の形式でインストールされる（例: `general--git-workflow.md`）。
 
 ## ライセンス
 
