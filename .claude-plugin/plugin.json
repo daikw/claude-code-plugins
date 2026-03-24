@@ -1,18 +1,14 @@
 {
-  "name": "edge-robotics-skills",
-  "version": "0.1.0",
-  "description": "Claude Code skills for edge computing and robotics development",
+  "name": "daikw-claude-code-plugins",
+  "version": "0.5.0",
+  "description": "Claude Code plugins by daikw: general-purpose and edge-robotics",
   "author": {
     "name": "daikw"
   },
   "repository": "https://github.com/daikw/claude-code-plugins",
   "license": "MIT",
   "keywords": [
-    "edge-computing",
-    "robotics",
-    "jetson",
-    "raspberry-pi",
-    "lerobot",
-    "jujutsu"
+    "general", "tdd", "code-review", "ci-cd", "swarm",
+    "edge-computing", "robotics", "embedded"
   ]
 }
