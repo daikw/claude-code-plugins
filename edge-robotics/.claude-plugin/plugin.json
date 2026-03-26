@@ -1,0 +1,13 @@
+{
+  "name": "edge-robotics-skills",
+  "version": "0.5.0",
+  "description": "Skills for edge computing, robotics, embedded MCUs, and VCS workflows",
+  "author": {
+    "name": "daikw"
+  },
+  "repository": "https://github.com/daikw/claude-code-plugins",
+  "license": "MIT",
+  "keywords": [
+    "edge-computing", "robotics", "jetson", "raspberry-pi", "embedded", "lerobot"
+  ]
+}

@@ -12,7 +12,7 @@
     {
       "name": "general-skills",
       "description": "General-purpose Claude Code skills for development workflows, code review, TDD, CI/CD, team orchestration, and more",
-      "source": "./general",
+      "source": { "type": "local", "path": "./general" },
       "strict": false,
       "skills": [
         "./general/skills/meta-rules",
@@ -37,7 +37,7 @@
     {
       "name": "edge-robotics-skills",
       "description": "Skills for edge computing, robotics, embedded MCUs, and VCS workflows",
-      "source": "./edge-robotics",
+      "source": { "type": "local", "path": "./edge-robotics" },
       "strict": false,
       "skills": [
         "./edge-robotics/skills/jujutsu",
