@@ -107,3 +107,22 @@ Phase 3 修正 → Phase 4 再検証を 1 run とカウント。**最大 3 runs*
 - 変更ファイルに frontend-facing パターンが含まれる（`.tsx`, `.jsx`, `.vue`, `.svelte`, `.css`, `.scss`, `.html` 等）
 
 **`auto` を `skip` と解釈してはならない。** 判断に迷ったら実行寄りに倒す。
+
+---
+
+## スクリーンショット
+
+Playwright MCP（`mcp__playwright__browser_take_screenshot`）を使う。`filename` 指定でファイルに直接保存される。
+
+```
+mcp__playwright__browser_take_screenshot
+  filename: "screenshot.png"
+  type: "png"          # or "jpeg"
+  fullPage: true       # ページ全体
+```
+
+- 失敗時: 1-2 枚必須（`[DEFECT_REPORT]` の `evidence` にパスを記載）
+- 成功時: 省略可
+- 大きな UI 変更時: before/after が有効
+- JPG 変換が必要な場合: `sips -s format jpeg <file>.png --out <file>.jpg`
+- GitHub PR/Issue への添付: `/uploading-images-via-browser` スキルを使う

@@ -58,9 +58,20 @@ suggested_owner: frontend|backend|infra|unknown
 
 ### スクリーンショット
 
-- 失敗時: 1-2 枚必須
+Playwright MCP（`mcp__playwright__browser_take_screenshot`）を使う。`filename` 指定でファイルに直接保存される。
+
+```
+mcp__playwright__browser_take_screenshot
+  filename: "223_scan_error_banner.png"
+  type: "png"          # or "jpeg"
+  fullPage: true       # ページ全体
+```
+
+- 失敗時: 1-2 枚必須（`[DEFECT_REPORT]` の `evidence` にパスを記載）
 - 成功時: 省略可
 - 大きな UI 変更時: before/after が有効
+- JPG 変換が必要な場合: `sips -s format jpeg <file>.png --out <file>.jpg`
+- GitHub PR/Issue への添付: `/uploading-images-via-browser` スキルを使う
 
 ---
 
