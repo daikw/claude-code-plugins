@@ -1,0 +1,21 @@
+{
+  "name": "",
+  "description": "",
+  "created_at": "",
+  "planner": "codex",
+  "worker": "claude-code",
+  "features": [
+    {
+      "id": "feat-001",
+      "title": "",
+      "description": "",
+      "status": "pending",
+      "priority": 1,
+      "acceptance_criteria": [],
+      "tests_pass": false,
+      "assigned_to": null,
+      "review_notes": ""
+    }
+  ],
+  "constraints": []
+}
