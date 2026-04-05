@@ -1,6 +1,6 @@
 {
   "name": "general-skills",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "General-purpose Claude Code skills for development workflows, code review, TDD, CI/CD, team orchestration, and more",
   "author": {
     "name": "daikw"
