@@ -27,3 +27,21 @@ install-rules.sh  ルール配布スクリプト（プラグインシステム�
 
 - 実行が必要な作業（スキャン、書き込み、診断）→ Agent
 - 知識参照だけ → Skill
+
+## バージョン管理
+
+各プラグインのバージョンは `<plugin>/.claude-plugin/plugin.json` の `version` フィールドで管理する。
+
+| プラグイン | パス |
+|-----------|------|
+| ルート | `.claude-plugin/plugin.json` |
+| general | `general/.claude-plugin/plugin.json` |
+| edge-robotics | `edge-robotics/.claude-plugin/plugin.json` |
+
+### 更新タイミング
+
+skills / agents / rules の追加・削除・大幅変更時にパッチ (`0.0.1`) またはマイナー (`0.1.0`) を上げる。
+
+- **パッチ**: 既存スキルの修正、typo 修正、リファレンス更新
+- **マイナー**: スキル・エージェントの追加・削除、構造変更
+- **メジャー**: 破壊的変更（ディレクトリ構造の大幅変更など）
