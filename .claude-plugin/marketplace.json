@@ -12,50 +12,12 @@
     {
       "name": "general-skills",
       "description": "General-purpose Claude Code skills for development workflows, code review, TDD, CI/CD, team orchestration, and more",
-      "source": "./general",
-      "strict": false,
-      "skills": [
-        "./general/skills/meta-rules",
-        "./general/skills/codex",
-        "./general/skills/fix-ci",
-        "./general/skills/commit-push",
-        "./general/skills/swarm-dev",
-        "./general/skills/swarm-dev-v2",
-        "./general/skills/skill-creator",
-        "./general/skills/issue-dev",
-        "./general/skills/deodorize-ai",
-        "./general/skills/jujutsu-workflow",
-        "./general/skills/business-evaluation",
-        "./general/skills/agent-skill-testing",
-        "./general/skills/coding-agent-spec",
-        "./general/skills/xpoint-server-apply",
-        "./general/skills/terraform-mermaid",
-        "./general/skills/move-project",
-        "./general/skills/history-search"
-      ]
+      "source": "./general"
     },
     {
       "name": "edge-robotics-skills",
       "description": "Skills for edge computing, robotics, embedded MCUs, and VCS workflows",
-      "source": "./edge-robotics",
-      "strict": false,
-      "skills": [
-        "./edge-robotics/skills/jujutsu",
-        "./edge-robotics/skills/edge-common",
-        "./edge-robotics/skills/jetson",
-        "./edge-robotics/skills/raspberry-pi",
-        "./edge-robotics/skills/lerobot-basics",
-        "./edge-robotics/skills/lerobot-fullstack",
-        "./edge-robotics/skills/so-arm",
-        "./edge-robotics/skills/embedded-basics",
-        "./edge-robotics/skills/esp32",
-        "./edge-robotics/skills/pico",
-        "./edge-robotics/skills/nrf",
-        "./edge-robotics/skills/stm32",
-        "./edge-robotics/skills/zephyr",
-        "./edge-robotics/skills/freertos",
-        "./edge-robotics/skills/arduino"
-      ]
+      "source": "./edge-robotics"
     }
   ]
 }
