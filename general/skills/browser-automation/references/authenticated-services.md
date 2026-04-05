@@ -19,59 +19,47 @@ storage-state で安定しないサービスは `--user-data-dir` で永続プ�
 ## 初回認証セットアップ
 
 ヘッドレスモードではログインフォームの操作やOAuth リダイレクト、2FA の入力ができない。
-**初回認証は必ずヘッドモード（ブラウザ表示あり）で行う。**
+**初回認証は `npx playwright open` で GUI ブラウザを別途起動して行う。Claude Code のセッション再起動は不要。**
 
 ### 手順
 
-1. **`~/.claude.json` から `--headless` を一時的に外す**
+1. **ユーザーにターミナルで以下を実行してもらう**
 
-```json
-{
-  "mcpServers": {
-    "playwright": {
-      "args": [
-        "@playwright/mcp@latest",
-        "--isolated",
-        "--storage-state",
-        "/Users/<username>/.claude/playwright-storage-state.json"
-      ]
-    }
-  }
-}
+```bash
+! npx playwright open --save-storage=/home/daikw/.claude/playwright-storage-state.json https://example.com
 ```
 
-2. **Claude Code を再起動**（設定反映のため）
+   - `! ` プレフィックスで Claude Code セッション内から直接実行可能
+   - `https://example.com` は認証先の URL に置き換える
+   - GUI ブラウザが開く
 
-3. **`browser_navigate` でログインページを開く**
-   - ブラウザウィンドウが表示される
-   - ユーザーが手動でログイン操作（ID/パスワード入力、OAuth、2FA 等）を実施
+2. **ユーザーが手動でログイン操作**（ID/パスワード入力、OAuth、2FA 等）
 
-4. **ログイン完了後、storage-state をエクスポート**
+3. **ブラウザを閉じる** — 閉じた時点で `--save-storage` に指定したパスへ Cookie/localStorage が自動保存される
 
-```
-mcp__playwright__browser_run_code:
-  code: |
-    async (page) => {
-      const state = await page.context().storageState();
-      return JSON.stringify(state);
-    }
-```
-
-5. **結果の JSON を `~/.claude/playwright-storage-state.json` に保存**
-   - 不要な Cookie（Analytics、一時セッション等）は除外してよい
+4. **保存された JSON の確認（任意）**
+   - 不要な Cookie（Analytics、サードパーティトラッカー等）があれば手動で除外してよい
    - 認証に必要な永続 Cookie だけ残す
 
-6. **`--headless` を戻して Claude Code を再起動**
+以降、ヘッドレスの Playwright MCP がその storage-state を自動的に読み込む。
+
+### 複数サービスの認証
+
+サービスごとに `npx playwright open` を繰り返す場合、`--save-storage` は毎回上書きされる。
+複数サービスの Cookie を維持するには:
+
+- **方法1**: 1回のセッションで複数サービスにログインしてからブラウザを閉じる
+- **方法2**: サービスごとにエクスポートした JSON の `cookies` 配列を手動マージする（後述）
 
 ### 既存プロファイルがある場合
 
 過去に `--user-data-dir` で認証済みプロファイルがあるなら:
 
-1. `~/.claude.json` を一時的に `--user-data-dir <path>` 方式に戻す
-2. Claude Code を再起動
-3. `browser_navigate` でサービスにアクセスしてログイン済みか確認
-4. `page.context().storageState()` でエクスポート
-5. `~/.claude.json` を `--isolated --headless --storage-state` に戻す
+```bash
+! npx playwright open --user-data-dir=<path> --save-storage=/home/daikw/.claude/playwright-storage-state.json https://example.com
+```
+
+ログイン済みの状態でブラウザが開くので、そのまま閉じれば storage-state がエクスポートされる。
 
 ## 複数サービスの認証を管理する
 
@@ -104,15 +92,14 @@ storage-state は 1 ファイルに複数サービスの Cookie を含められ�
 
 ### 2FA / MFA を求められる
 
-1. `--headless` を外して Claude Code を再起動
-2. `browser_navigate` でサービスを開き、手動で 2FA を通す
+1. `npx playwright open --save-storage=~/.claude/playwright-storage-state.json <URL>` で GUI ブラウザを開く
+2. 手動で 2FA を通す
 3. 「このデバイスを信頼する」にチェックして Cookie に記録させる
-4. `page.context().storageState()` で再エクスポート
-5. `--headless` を戻す
+4. ブラウザを閉じて storage-state を再保存
 
 ### CAPTCHA が表示される
 
 - ヘッドレスブラウザは bot 検出されやすい
 - `--no-sandbox` は逆効果（フィンガープリントが異常になる）
 - 対策: `--user-agent` で通常のブラウザと同じ UA を設定する
-- それでもダメな場合は `--headless` を外して手動で通す
+- それでもダメな場合は `npx playwright open` で GUI から手動で通す

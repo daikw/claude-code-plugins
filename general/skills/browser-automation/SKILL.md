@@ -40,24 +40,19 @@ Freedom Level: **中** — 基本パターンに従いつつ、対象に応じ�
 `~/.claude.json` の `mcpServers` > プラグインの `.mcp.json`。
 プラグイン側を編集しても `~/.claude.json` に同名キーがあるとそちらが優先される。
 
-### storage-state のエクスポート
+### storage-state のエクスポート（認証セットアップ）
 
-認証済みブラウザセッションがある状態で:
+**セッション再起動不要。** ユーザーに以下のコマンドを案内する:
 
-```
-mcp__playwright__browser_run_code:
-  code: |
-    async (page) => {
-      const state = await page.context().storageState();
-      return JSON.stringify(state);
-    }
+```bash
+! npx playwright open --save-storage=/home/daikw/.claude/playwright-storage-state.json https://example.com
 ```
 
-結果の JSON を `~/.claude/playwright-storage-state.json` に保存する。
+GUI ブラウザが開くので、ユーザーが手動でログインしてからブラウザを閉じる。
+Cookie/localStorage が自動保存され、以降 headless の Playwright MCP が読み込む。
+
 Cookie の有効期限が切れたら同じ手順で再エクスポートする。
-
-不要な Cookie（一時セッション、サードパーティトラッカー等）は除外してよい。
-認証に必要な永続 Cookie だけ残す。
+詳細は [references/authenticated-services.md](references/authenticated-services.md) を参照。
 
 ## Reconnaissance-Then-Action
 
