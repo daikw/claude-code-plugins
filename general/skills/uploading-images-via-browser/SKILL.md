@@ -1,214 +1,166 @@
 ---
 name: uploading-images-via-browser
-description: "Uploads images and screenshots to web forms (GitHub Issues/PRs, GitLab MRs, etc.) via browser automation using ClipboardEvent paste injection. Use when the user asks to attach screenshots to issues, paste images into PR comments, or upload images to any web textarea that supports paste-to-upload."
+description: "Uploads images and screenshots to web forms (GitHub Issues/PRs, GitLab MRs, Notion, Slack, etc.) via Playwright MCP using ClipboardEvent paste injection. Use when the user asks to attach screenshots to issues, paste images into PR comments, or upload images to any web textarea that supports paste-to-upload."
 ---
 
 # uploading-images-via-browser
 
-Playwright MCP または claude-in-chrome を使って、Web フォームの textarea に画像を paste event で注入するスキル。GitHub/GitLab 等の paste-to-upload 対応サイトで動作する。
+Playwright MCP で Web フォームの textarea/contenteditable に画像を paste event で注入するスキル。GitHub/GitLab/Notion 等の paste-to-upload 対応サイトで動作する。
 
-Freedom Level: **中** — 推奨パターン（Playwright → paste event）を使いつつ、サイトごとのセレクタは文脈に応じて調整する。
+Freedom Level: **中** — 推奨パターンに従いつつ、サイトごとのセレクタは文脈に応じて調整する。
 
-## 手段の優先順位
+## 前提
 
-1. **Playwright MCP**（推奨）- 独自ブラウザインスタンス、ファイルサイズ制限なし
-2. **claude-in-chrome**（フォールバック）- ユーザーの Chrome を使用、~50KB のサイズ制限あり
+- **Playwright MCP の基本操作は [browser-automation](../browser-automation/SKILL.md) スキルを参照**
+  - 環境セットアップ、storage-state、認証、基本ツールの使い方
+- 対象サイトにログイン済みの storage-state が設定されていること
+- アップロードする画像ファイルが `/Users/daikiwatanabe/tmp/tmp` 配下または `.playwright-mcp/` 配下にあること（Playwright MCP のファイルアクセス制限）
 
-## 前提条件
+## なぜ paste event か
 
-- Playwright MCP が接続済みであること
-- GitHub にログイン済みのブラウザセッションがあること（Playwright は初回ログインが必要）
-- アップロードする画像ファイルが `/Users/daikiwatanabe/tmp/tmp` 配下または `.playwright-mcp/` 配下にあること
+GitHub をはじめ多くのモダン Web アプリは `<input type="file">` を持たず、paste/drop イベントで画像をアップロードする UI になっている。そのため通常のファイル選択ダイアログ経由（`browser_file_upload`）では動かない。
 
----
+代わりに `ClipboardEvent('paste')` に File を入れて dispatch することで、アプリの paste ハンドラを直接発火させる。サイト側がアップロード処理を行い、マークダウンリンクや `<img>` タグを自動挿入する。
 
-## 手法1: Playwright MCP（推奨）
+## 手順
 
-### ステップ概要
-
-1. GitHub ページへナビゲート
-2. 画像を base64 化してアップロードスクリプトを生成
-3. `browser_run_code` でスクリプト実行（ClipboardEvent paste）
-4. スクリーンショットで結果確認
-
-### 詳細手順
-
-#### Step 1: GitHub ページを開く
+### Step 1: 対象ページへナビゲート
 
 ```
-mcp__playwright__browser_navigate → url: "https://github.com/{owner}/{repo}/issues/{number}"
+mcp__playwright__browser_navigate → url: "https://github.com/{owner}/{repo}/issues/new"
 ```
 
-#### Step 2: 画像を base64 化してスクリプトファイルを生成
+### Step 2: textarea セレクタを確認
 
-Bash で以下を実行する。`browser_run_code` 内では Node.js の `require`/`import` が使えないため、必ず Bash 側で base64 を埋め込む。
+サービス別のセレクタは [references/paste-targets.md](references/paste-targets.md) を参照。
+
+新しいサイトの場合は `browser_snapshot` で DOM を確認してセレクタを特定する。
+
+### Step 3: 画像を base64 化してスクリプトを生成
+
+`browser_run_code` 内では Node.js の `require`/`import` が使えないため、Bash 側で base64 を埋め込んだ JS ファイルを生成する。
 
 ```bash
-B64=$(base64 -i /path/to/image.png | tr -d '\n')
+B64=$(base64 -i /path/to/image.png | tr -d '\n')  # macOS
+# B64=$(base64 -w0 /path/to/image.png)  # Linux
+
 cat > /Users/daikiwatanabe/tmp/tmp/upload-script.js << JSEOF
 async (page) => {
   const b64 = '${B64}';
   const result = await page.evaluate(async (b64) => {
+    // base64 → File
     const binaryStr = atob(b64);
     const bytes = new Uint8Array(binaryStr.length);
     for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
     const blob = new Blob([bytes], { type: 'image/png' });
     const file = new File([blob], 'screenshot.png', { type: 'image/png' });
-    const ta = document.querySelector('textarea[placeholder*="Type your description"]')
-            || document.querySelector('textarea[placeholder*="Leave a comment"]')
-            || document.querySelector('.js-comment-field');
-    if (!ta) return { error: 'textarea not found', selectors: document.querySelectorAll('textarea').length };
-    ta.focus();
+
+    // サイト別セレクタ（フォールバック付き）
+    const selectors = [
+      'textarea[placeholder*="Type your description"]',   // GitHub New Issue
+      'textarea[placeholder*="Leave a comment"]',          // GitHub Comment
+      '.js-comment-field',                                 // GitHub Review
+      'textarea#note-body',                                // GitLab
+      'textarea.js-gfm-input',                             // GitLab
+      '.ProseMirror[contenteditable="true"]',              // Notion/TipTap
+      'div.ql-editor[contenteditable="true"]',             // Quill (Slack)
+    ];
+    let el = null;
+    let matchedSelector = '';
+    for (const s of selectors) {
+      el = document.querySelector(s);
+      if (el) { matchedSelector = s; break; }
+    }
+    if (!el) return { error: 'No editable element found' };
+
+    // フォーカス設定（contenteditable は selection も必要）
+    el.focus();
+    if (el.getAttribute('contenteditable') === 'true') {
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+
+    // paste event dispatch
     const dt = new DataTransfer();
     dt.items.add(file);
-    const evt = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
-    const dispatched = ta.dispatchEvent(evt);
+    const evt = new ClipboardEvent('paste', {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: dt
+    });
+    const dispatched = el.dispatchEvent(evt);
+
+    // サイトのアップロード処理待ち
     await new Promise(r => setTimeout(r, 3000));
-    return { success: true, dispatched, fileSize: file.size, textareaValue: ta.value.substring(0, 300) };
+
+    return {
+      success: true,
+      dispatched,
+      matchedSelector,
+      fileSize: file.size,
+      resultPreview: (el.value || el.innerHTML || '').substring(0, 300)
+    };
   }, b64);
   return JSON.stringify(result, null, 2);
 }
 JSEOF
 ```
 
-#### Step 3: スクリプトを実行
+### Step 4: スクリプトを実行
 
 ```
-mcp__playwright__browser_run_code → code: <upload-script.js の内容を指定>
+mcp__playwright__browser_run_code → filename: "/Users/daikiwatanabe/tmp/tmp/upload-script.js"
 ```
 
-返り値に `success: true` と `textareaValue` に `![Uploading screenshot.png...]` のようなマークダウンが含まれていれば成功。GitHub が自動で `user-attachments/assets/...` の URL に差し替える。
+**成功判定:**
+- `success: true` かつ `matchedSelector` が埋まっている
+- `dispatched: false` は正常（サイト側が `preventDefault` で処理済み）
+- `resultPreview` に `<img ... src="https://...">` や `![image](...)` 形式のマークダウンが含まれていれば、サーバーアップロード成功
 
-#### Step 4: 結果確認
-
-```
-mcp__playwright__browser_take_screenshot
-```
-
-textarea に画像のマークダウンリンクが挿入されていることを目視確認する。
-
-#### Step 5: コメント投稿（必要に応じて）
-
-テキストの追加やボタンクリックで投稿する。
-
-### Playwright のログインについて
-
-Playwright は独自のブラウザインスタンスを使うため、初回は GitHub にログインする必要がある。
-
-1. `browser_navigate` で `https://github.com/login` を開く
-2. `browser_fill_form` でユーザー名・パスワードを入力（ユーザーに聞く）
-3. 2FA が必要な場合はユーザーに操作を依頼する
-4. ログイン後、ブラウザを閉じなければセッションは維持される
-
----
-
-## 手法2: claude-in-chrome（フォールバック）
-
-Playwright MCP が利用できない場合のフォールバック。ユーザーの Chrome（ログイン済み）で操作する。
-
-### 制約事項
-
-- **サイズ制限**: JS の text パラメータに base64 を埋め込むため、元画像 ~50KB（base64 で ~67KB）が上限
-- **大きい画像**: JPEG 圧縮（quality=20-30）+ リサイズで対応する
-- **`upload_image` ツールは使用不可**: MCP 経由では "Unable to access message history to retrieve image" エラーが発生するバグあり（2026-04 時点、未修正）
-
-### 手順
-
-#### Step 1: タブコンテキスト取得 & GitHub ページを開く
+### Step 5: 結果を視覚確認
 
 ```
-mcp__claude-in-chrome__tabs_context_mcp
-mcp__claude-in-chrome__tabs_create_mcp → url: "https://github.com/{owner}/{repo}/issues/{number}"
+mcp__playwright__browser_take_screenshot → filename: "upload-result.png", type: "png"
 ```
 
-#### Step 2: 画像を base64 化
+## 動作確認済みサービス
 
-Bash で画像を base64 に変換する。サイズが大きい場合は圧縮する。
+| サービス | 状態 | 備考 |
+|---------|------|------|
+| **GitHub** | ✅ 完全動作 | `user-attachments/assets/<uuid>` にアップロードされる |
+| **Quill** (Slack エディタ同系) | ✅ 完全動作 | `data:image/png;base64,...` として挿入 |
+| **ProseMirror** | ✅ イベント到達 | 画像対応プラグインがあれば動作 |
+| **GitLab** | 未テスト | セレクタは準備済み |
+| **Notion** | 未テスト | セレクタは準備済み（contenteditable） |
+| **Google Docs** | ⚠️ 難しい | iframe 内の body が対象でクロスオリジン制約 |
 
-```bash
-# サイズ確認
-wc -c < /path/to/image.png
-
-# 大きい場合: ImageMagick でリサイズ + JPEG 圧縮
-convert /path/to/image.png -resize 800x -quality 25 /path/to/image-small.jpg
-B64=$(base64 -i /path/to/image-small.jpg | tr -d '\n')
-
-# 小さい場合: そのまま
-B64=$(base64 -i /path/to/image.png | tr -d '\n')
-```
-
-#### Step 3: JavaScript で paste event を dispatch
-
-```
-mcp__claude-in-chrome__javascript_tool → text: <以下のスクリプト（B64 を埋め込み済み）>
-```
-
-```javascript
-(async () => {
-  const b64 = '<BASE64_STRING_HERE>';
-  const mimeType = 'image/png';  // or 'image/jpeg'
-  const fileName = 'screenshot.png';  // or 'screenshot.jpg'
-  const binaryStr = atob(b64);
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-  const blob = new Blob([bytes], { type: mimeType });
-  const file = new File([blob], fileName, { type: mimeType });
-  const ta = document.querySelector('textarea[placeholder*="Type your description"]')
-          || document.querySelector('textarea[placeholder*="Leave a comment"]')
-          || document.querySelector('.js-comment-field');
-  if (!ta) return JSON.stringify({ error: 'textarea not found' });
-  ta.focus();
-  const dt = new DataTransfer();
-  dt.items.add(file);
-  const evt = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
-  ta.dispatchEvent(evt);
-  await new Promise(r => setTimeout(r, 3000));
-  return JSON.stringify({ success: true, textareaValue: ta.value.substring(0, 300) });
-})()
-```
-
-#### Step 4: 結果確認
-
-```
-mcp__claude-in-chrome__read_page
-```
-
----
-
-## paste ターゲット
-
-サービスごとのセレクタ、フォールバック戦略、contenteditable 向けの paste パターンは [references/paste-targets.md](references/paste-targets.md) を参照。
-
-対応サービス: GitHub, GitLab, Notion, Slack (Web), Google Docs, CKEditor / TipTap / ProseMirror 系。
-
----
+詳細は [references/paste-targets.md](references/paste-targets.md)。
 
 ## トラブルシューティング
 
-### textarea not found
+### "No editable element found"
 
-- ページのロードが完了していない可能性がある。`browser_wait_for` で textarea の出現を待つ
-- GitHub の UI 変更でセレクタが変わった可能性がある。`browser_snapshot` で DOM を確認する
+- ページロード完了前に実行された可能性 → `browser_wait_for` で textarea 出現を待つ
+- SPA で非同期にエディタが生成されるサイト → `page.waitForTimeout(3000)` を追加
+- セレクタが変わった → `browser_snapshot` で実際の DOM を確認
 
-### paste event は成功するが画像 URL に差し替わらない
+### paste event は通るが画像 URL に差し替わらない
 
-- GitHub の JavaScript が paste event を拾えていない。textarea に focus を当ててからもう一度試す
-- `await new Promise(r => setTimeout(r, 3000))` の待機時間が短い可能性がある。5000ms に延長する
+- サイトの JS が paste event を拾えていない → `focus()` 後に `dispatchEvent` しているか確認
+- 待機時間が短い → `setTimeout(r, 3000)` を 5000-10000 に延長
+- サイトが画像アップロードを非対応 → 画像ハンドラのないエディタ（例: ProseMirror 基本デモ）では動かない
 
-### Playwright でログインセッションが切れる
+### ファイルアクセス拒否
 
-- `browser_navigate` で GitHub にアクセスしてログイン状態を確認する
-- 再ログインが必要な場合はユーザーに通知する
+- `browser_run_code` 経由の `page.evaluate` は OS ファイルにアクセスしない（base64 は Bash 側で埋め込む）
+- 画像ファイル自体は Playwright MCP の許可ディレクトリ（`/Users/daikiwatanabe/tmp/tmp` 配下等）に置く
 
-### claude-in-chrome でサイズ制限に引っかかる
+## 既知の制限
 
-- ImageMagick で圧縮: `convert input.png -resize 600x -quality 20 output.jpg`
-- それでも大きい場合は Playwright MCP に切り替える
-
----
-
-## 既知の制限事項
-
-- **upload_image MCP ツール**: Chrome 拡張の MCP コードパスに `messages` プロパティが渡されないバグにより使用不可。詳細は `~/tmp/tmp/chrome-upload-image-investigation.md` を参照
-- **Mixed Content**: localhost の HTTP サーバから GitHub (HTTPS) への fetch はブラウザにブロックされる
-- **GitHub 新 UI**: `<input type="file">` が存在しないため、`browser_file_upload` は使えない。paste event 方式が唯一の手段
+- **`browser_file_upload` は使えない**: GitHub などの新 UI には `<input type="file">` が存在しないため
+- **`claude-in-chrome` の `upload_image` は壊れている**: MCP コードパスに `messages` プロパティが渡されないバグあり。詳細は `~/tmp/tmp/chrome-upload-image-investigation.md` 参照
+- **localhost HTTP → HTTPS サイト fetch**: Mixed Content でブロックされるため、画像配信経由の手法は使えない
